@@ -2,11 +2,12 @@ import Image from 'next/image';
 
 export default function Avatar({ src, alt = "Avatar", size = "md", className = "" }) {
   const sizeMap = {
+    xs: "w-6 h-6",
     sm: "w-8 h-8",
     md: "w-10 h-10",
-    lg: "w-16 h-16",
-    xl: "w-24 h-24",
-    xxl: "w-32 h-32"
+    lg: "w-14 h-14",
+    xl: "w-20 h-20",
+    xxl: "w-28 h-28"
   };
 
   const currentSize = sizeMap[size] || sizeMap.md;

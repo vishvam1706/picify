@@ -3,6 +3,7 @@ import Pin from '@/models/Pin';
 import User from '@/models/User';
 import SearchHistory from '@/models/SearchHistory';
 import { withOptionalAuth, apiSuccess, apiError } from '@/lib/apiHelpers';
+import { getBlockedUserIds } from '@/lib/blockFilter';
 
 export const GET = withOptionalAuth(async (request) => {
   try {
@@ -16,6 +17,9 @@ export const GET = withOptionalAuth(async (request) => {
 
     await dbConnect();
 
+    // Fetch blocked user IDs once for all filter operations below
+    const blockedIds = await getBlockedUserIds(request.user?._id);
+
     // ── User Search ──────────────────────────────────────────────────────
     if (type === 'users') {
       if (!query) {
@@ -26,6 +30,7 @@ export const GET = withOptionalAuth(async (request) => {
         isDeleted: false,
         isActive: true,
         'privacy.isPublic': true,
+        ...(blockedIds.length > 0 && { _id: { $nin: blockedIds } }),
         $or: [
           { username: { $regex: query, $options: 'i' } },
           { displayName: { $regex: query, $options: 'i' } },
@@ -53,7 +58,8 @@ export const GET = withOptionalAuth(async (request) => {
     let pinQuery = {
       isPublic: true,
       isDeleted: false,
-      isDraft: false
+      isDraft: false,
+      ...(blockedIds.length > 0 && { userId: { $nin: blockedIds } }),
     };
 
     if (filterOrientation) {
@@ -61,12 +67,15 @@ export const GET = withOptionalAuth(async (request) => {
     }
 
     if (query) {
-      // Use MongoDB Atlas Search (or text index fallback if strictly self-hosted)
-      // We rely on the traditional $text for general text matches
-      pinQuery.$text = { $search: query };
+      pinQuery.$or = [
+        { title: { $regex: query, $options: 'i' } },
+        { description: { $regex: query, $options: 'i' } },
+        { tags: { $regex: query, $options: 'i' } },
+        { categories: { $regex: query, $options: 'i' } }
+      ];
     }
 
-    const sortOptions = query ? { score: { $meta: 'textScore' } } : { savesCount: -1, createdAt: -1 };
+    const sortOptions = { savesCount: -1, createdAt: -1 };
 
     const pins = await Pin.paginate(pinQuery, {
       page,
@@ -95,6 +104,29 @@ export const GET = withOptionalAuth(async (request) => {
         filters: { orientation: filterOrientation, color: filterColor },
         resultsCount: pins.totalDocs
       }).catch(console.error);
+    }
+
+    if (request.user) {
+      const SavedPin = (await import('@/models/SavedPin')).default;
+      const savedPinIds = await SavedPin.find({ userId: request.user._id, pinId: { $in: results.map(r => r._id) } }).distinct('pinId');
+      const savedSet = new Set(savedPinIds.map(id => id.toString()));
+      const userIdStr = request.user._id.toString();
+
+      results = results.map(p => {
+        const isSaved = savedSet.has(p._id.toString());
+        const isLiked = p.likes && p.likes.some(id => id.toString() === userIdStr);
+        const obj = { ...p, isSaved, isLiked };
+        delete obj.likes;
+        delete obj.saves;
+        return obj;
+      });
+    } else {
+      results = results.map(p => {
+        const obj = { ...p };
+        delete obj.likes;
+        delete obj.saves;
+        return obj;
+      });
     }
 
     return apiSuccess({

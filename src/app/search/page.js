@@ -1,174 +1,133 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 import MasonryGrid from '@/components/pins/MasonryGrid';
-import UserCard from '@/components/users/UserCard';
-import { Search, Loader2, ImageIcon, Users, LayoutGrid } from 'lucide-react';
-import InfiniteScroll from 'react-infinite-scroll-component';
+import Avatar from '@/components/ui/Avatar';
+import FollowButton from '@/components/users/FollowButton';
+import { Search, Loader2, BadgeCheck } from 'lucide-react';
+import { Suspense } from 'react';
 
-const TABS = [
-  { id: 'pins', label: 'Pins', icon: LayoutGrid },
-  { id: 'people', label: 'People', icon: Users },
-];
-
-const CATEGORIES = ['All', 'Art', 'Travel', 'Food', 'Fashion', 'Technology', 'Nature', 'Design', 'Photography'];
-
-function SearchResults() {
-  const searchParams = useSearchParams();
+function SearchContent() {
+  const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const q = searchParams.get('q') || '';
-
-  const [tab, setTab] = useState('pins');
-  const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState(q);
+  const [activeType, setActiveType] = useState('pins');
   const [pins, setPins] = useState([]);
-  const [people, setPeople] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
 
-  useEffect(() => {
-    if (!q) return;
-    setPins([]);
-    setPeople([]);
-    setPage(1);
-    setHasMore(true);
-    fetchResults(q, tab, 1, category);
-  }, [q, tab, category]);
-
-  const fetchResults = async (query, activeTab, pageNum, cat) => {
-    if (!query.trim()) return;
+  const doSearch = useCallback(async (searchQ, type) => {
+    if (!searchQ.trim()) { setPins([]); setUsers([]); return; }
     setLoading(true);
     try {
-      const params = new URLSearchParams({ q: query, page: pageNum, limit: 20 });
-      if (cat && cat !== 'All') params.set('category', cat);
-
-      if (activeTab === 'pins') {
-        const res = await fetch(`/api/search?${params}`);
-        const data = await res.json();
-        if (res.ok) {
-          const docs = data.data?.docs || data.data?.pins || [];
-          pageNum === 1 ? setPins(docs) : setPins(prev => [...prev, ...docs]);
-          setHasMore(data.data?.hasNextPage || false);
-        }
-      } else {
-        const res = await fetch(`/api/users/discover?q=${encodeURIComponent(query)}&page=${pageNum}&limit=20`);
-        const data = await res.json();
-        if (res.ok) {
-          const users = data.data?.docs || data.data?.users || [];
-          pageNum === 1 ? setPeople(users) : setPeople(prev => [...prev, ...users]);
-          setHasMore(data.data?.hasNextPage || false);
-        }
+      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQ)}&type=${type}&limit=30`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (type === 'pins') setPins(data.data.docs || []);
+        else setUsers(data.data.docs || []);
+        setHasMore(!!data.data.hasNextPage);
       }
-    } catch { setHasMore(false); } finally {
-      setLoading(false);
-    }
-  };
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, []);
 
-  const loadMore = () => {
-    const next = page + 1;
-    setPage(next);
-    fetchResults(q, tab, next, category);
+  useEffect(() => {
+    setQuery(q);
+    doSearch(q, activeType);
+  }, [q, activeType, doSearch]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (query.trim()) router.push(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
   return (
-    <div className="min-h-screen">
-      {/* Header bar */}
-      <div className="sticky top-16 z-30 bg-background/95 backdrop-blur border-b border-border">
-        <div className="container mx-auto px-4">
-          {/* Tab nav */}
-          <div className="flex gap-6 pt-4">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={`flex items-center gap-2 pb-3 font-semibold text-sm transition-colors relative ${tab === id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-                {tab === id && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-foreground rounded-t" />}
-              </button>
-            ))}
-          </div>
+    <div className="min-h-screen max-w-screen-2xl mx-auto px-4 py-6">
+      {/* Search bar */}
+      <form onSubmit={handleSubmit} className="relative max-w-2xl mx-auto mb-6">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search for pins, people, ideas..."
+          className="w-full h-14 bg-secondary rounded-full pl-12 pr-6 text-base font-medium outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+        />
+      </form>
 
-          {/* Category pills (pins only) */}
-          {tab === 'pins' && (
-            <div className="flex gap-2 pb-3 overflow-x-auto hide-scrollbar">
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${category === cat ? 'bg-foreground text-background' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-                >
-                  {cat}
-                </button>
-              ))}
+      {/* Tabs */}
+      <div className="flex gap-3 mb-6 justify-center">
+        {['pins', 'users'].map(type => (
+          <button
+            key={type}
+            onClick={() => setActiveType(type)}
+            className={`px-6 py-2 rounded-full font-semibold text-sm transition-all ${
+              activeType === type ? 'bg-foreground text-background' : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
+            }`}
+          >
+            {type === 'pins' ? '📌 Pins' : '👤 People'}
+          </button>
+        ))}
+      </div>
+
+      {/* Results label */}
+      {q && (
+        <h2 className="text-lg font-bold mb-4 px-1">
+          {loading ? 'Searching...' : `Results for "${q}"`}
+        </h2>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : activeType === 'pins' ? (
+        <MasonryGrid pins={pins} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {users.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center py-16 text-muted-foreground">
+              <div className="text-5xl mb-4">🔍</div>
+              <p className="font-semibold text-foreground">No people found</p>
+              <p className="text-sm mt-1">Try a different search term.</p>
             </div>
+          ) : (
+            users.map(u => (
+              <Link
+                key={u._id}
+                href={`/${u.username}`}
+                className="flex flex-col items-center text-center p-6 bg-card border border-border rounded-3xl hover:shadow-lg transition-shadow group"
+              >
+                <Avatar src={u.profileImage} alt={u.username} size="xl" className="mb-3" />
+                <div className="flex items-center gap-1 mb-1">
+                  <p className="font-bold group-hover:text-primary transition-colors">{u.displayName || u.username}</p>
+                  {u.isVerified && <BadgeCheck className="w-4 h-4 text-primary flex-shrink-0" />}
+                </div>
+                <p className="text-sm text-muted-foreground mb-1">@{u.username}</p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {(u.followersCount || 0).toLocaleString()} followers
+                </p>
+                {u.bio && <p className="text-xs text-muted-foreground line-clamp-2 mb-4">{u.bio}</p>}
+                <FollowButton targetUserId={u._id} initialFollowing={false} />
+              </Link>
+            ))
           )}
         </div>
-      </div>
+      )}
 
-      <div className="container mx-auto px-4 py-6">
-        {/* Query heading */}
-        {q && (
-          <h1 className="text-2xl font-bold mb-6">
-            Results for <span className="text-primary">"{q}"</span>
-          </h1>
-        )}
-
-        {!q && (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <Search className="w-16 h-16 text-muted-foreground mb-4 opacity-40" />
-            <h2 className="text-2xl font-bold mb-2">Find ideas that inspire you</h2>
-            <p className="text-muted-foreground">Search for pins, people, and boards</p>
-          </div>
-        )}
-
-        {q && tab === 'pins' && (
-          loading && pins.length === 0 ? (
-            <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-          ) : pins.length === 0 && !loading ? (
-            <div className="flex flex-col items-center py-20 text-center">
-              <ImageIcon className="w-12 h-12 text-muted-foreground mb-4 opacity-40" />
-              <h3 className="text-xl font-semibold mb-1">No pins found</h3>
-              <p className="text-muted-foreground">Try different keywords or browse categories</p>
-            </div>
-          ) : (
-            <InfiniteScroll
-              dataLength={pins.length}
-              next={loadMore}
-              hasMore={hasMore}
-              loader={<div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin" /></div>}
-              endMessage={<p className="text-center text-sm text-muted-foreground py-8">End of results</p>}
-            >
-              <MasonryGrid pins={pins} />
-            </InfiniteScroll>
-          )
-        )}
-
-        {q && tab === 'people' && (
-          loading && people.length === 0 ? (
-            <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-          ) : people.length === 0 && !loading ? (
-            <div className="flex flex-col items-center py-20 text-center">
-              <Users className="w-12 h-12 text-muted-foreground mb-4 opacity-40" />
-              <h3 className="text-xl font-semibold mb-1">No people found</h3>
-              <p className="text-muted-foreground">Try a different search term</p>
-            </div>
-          ) : (
-            <InfiniteScroll
-              dataLength={people.length}
-              next={loadMore}
-              hasMore={hasMore}
-              loader={<div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin" /></div>}
-            >
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {people.map(u => <UserCard key={u._id} user={u} />)}
-              </div>
-            </InfiniteScroll>
-          )
-        )}
-      </div>
+      {!q && !loading && (
+        <div className="flex flex-col items-center py-20 text-muted-foreground">
+          <div className="text-6xl mb-4">🔍</div>
+          <p className="text-xl font-bold text-foreground">Search for anything</p>
+          <p className="text-sm mt-1">Find pins, people, ideas and more.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -176,7 +135,7 @@ function SearchResults() {
 export default function SearchPage() {
   return (
     <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
-      <SearchResults />
+      <SearchContent />
     </Suspense>
   );
 }

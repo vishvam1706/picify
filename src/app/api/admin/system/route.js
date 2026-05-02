@@ -22,40 +22,29 @@ export const PATCH = withAdmin(async (request) => {
     const updates = await request.json();
     await dbConnect();
 
-    // Prevent random fields
-    const validKeys = [
-      'maintenanceMode', 'allowRegistrations', 'requireEmailVerification',
-      'maxUploadSizeMB', 'maxPinsPerDay', 'autoBanThreshold'
-    ];
-    
-    let sanitized = {};
-    for (const key of Object.keys(updates)) {
-      if (validKeys.includes(key)) {
-        sanitized[key] = updates[key];
-      }
-    }
+    // Always upsert — avoid comparison bugs with undefined/false
+    const settings = await SystemSettings.findOneAndUpdate(
+      {},
+      {
+        $set: {
+          ...(updates.maintenanceMode !== undefined && { 'platform.maintenanceMode': updates.maintenanceMode }),
+          ...(updates.allowRegistrations !== undefined && { 'platform.registrationOpen': updates.allowRegistrations }),
+          ...(updates.maxUploadSizeMB !== undefined && { 'upload.maxFileSize': updates.maxUploadSizeMB }),
+          ...(updates.weightViews !== undefined && { 'trending.weightViews': updates.weightViews }),
+          ...(updates.weightLikes !== undefined && { 'trending.weightLikes': updates.weightLikes }),
+          ...(updates.weightSaves !== undefined && { 'trending.weightSaves': updates.weightSaves }),
+          updatedAt: new Date(),
+          updatedBy: request.user._id,
+        }
+      },
+      { new: true, upsert: true, runValidators: true }
+    );
 
-    let settings = await SystemSettings.findOne();
-    if (!settings) settings = new SystemSettings();
-
-    // Track what changed for logs
-    const changes = {};
-    for (const key of Object.keys(sanitized)) {
-      if (settings[key] !== sanitized[key]) {
-        changes[key] = { from: settings[key], to: sanitized[key] };
-        settings[key] = sanitized[key];
-      }
-    }
-
-    await settings.save();
-
-    if (Object.keys(changes).length > 0) {
-      await AdminLog.create({
-        adminId: request.user._id,
-        action: 'UPDATE_SYSTEM_SETTINGS',
-        details: changes
-      });
-    }
+    await AdminLog.create({
+      adminId: request.user._id,
+      action: 'UPDATE_SYSTEM_SETTINGS',
+      details: updates
+    });
 
     return apiSuccess(settings);
   } catch (err) {
@@ -63,3 +52,4 @@ export const PATCH = withAdmin(async (request) => {
     return apiError('Failed to update system settings', 500);
   }
 });
+

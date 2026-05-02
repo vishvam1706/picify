@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
@@ -18,6 +19,20 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrors({});
+    
+    // Client-side validation
+    const newErrors = {};
+    if (!email) newErrors.email = 'Email address is required';
+    else if (!/^\S+@\S+\.\S+$/.test(email)) newErrors.email = 'Please enter a valid email address';
+    
+    if (!password) newErrors.password = 'Password is required';
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -59,24 +74,29 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input 
-            type="email" 
-            placeholder="Email address" 
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            className="h-12 rounded-xl"
-          />
-          <Input 
-            type="password" 
-            placeholder="Password" 
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            className="h-12 rounded-xl"
-          />
+          <div>
+            <Input 
+              type="email" 
+              placeholder="Email address" 
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setErrors(prev => ({...prev, email: ''})); }}
+              autoComplete="email"
+              className={`h-12 rounded-xl ${errors.email ? 'border-destructive focus-visible:ring-destructive/20' : ''}`}
+            />
+            {errors.email && <p className="text-sm text-destructive mt-1.5 ml-1">{errors.email}</p>}
+          </div>
+
+          <div>
+            <Input 
+              type="password" 
+              placeholder="Password" 
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setErrors(prev => ({...prev, password: ''})); }}
+              autoComplete="current-password"
+              className={`h-12 rounded-xl ${errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''}`}
+            />
+            {errors.password && <p className="text-sm text-destructive mt-1.5 ml-1">{errors.password}</p>}
+          </div>
           
           <Button type="submit" disabled={loading} className="w-full h-12 rounded-full text-lg mt-2 font-semibold">
             {loading ? 'Logging in...' : 'Log in'}

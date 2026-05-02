@@ -15,47 +15,66 @@ export default function FollowingPage() {
   const [users, setUsers] = useState([]);
   const [profile, setProfile] = useState(null);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const fetchProfile = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/users/profile?username=${username}`);
-      const data = await res.json();
-      if (res.ok) setProfile(data.data?.user || data.data);
-    } catch { /* silent */ }
+  // Single combined fetch: profile first, then following
+  useEffect(() => {
+    if (!username) return;
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        // 1. Fetch profile
+        const profileRes = await fetch(`/api/users/profile?username=${username}`);
+        const profileData = await profileRes.json();
+        if (!profileRes.ok || cancelled) {
+          if (!cancelled) setError('User not found');
+          setLoading(false);
+          return;
+        }
+
+        const profileUser = profileData.data;
+        if (!cancelled) setProfile(profileUser);
+
+        // 2. Fetch following using the resolved _id
+        const followingRes = await fetch(`/api/users/${profileUser._id}/following?page=1&limit=24`);
+        const followingData = await followingRes.json();
+        if (!cancelled) {
+          if (followingRes.ok) {
+            setUsers(followingData.data?.docs || []);
+            setHasMore(followingData.data?.hasNextPage || false);
+          } else {
+            setError(followingData.error || 'Failed to load following');
+          }
+        }
+      } catch {
+        if (!cancelled) setError('Something went wrong');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
   }, [username]);
 
-  const fetchFollowing = useCallback(async (pageNum = 1) => {
+  const loadMore = useCallback(async () => {
     if (!profile?._id) return;
-    try {
-      const res = await fetch(`/api/users/${profile._id}/following?page=${pageNum}&limit=24`);
-      const data = await res.json();
-      if (res.ok) {
-        const docs = data.data?.docs || data.data || [];
-        pageNum === 1 ? setUsers(docs) : setUsers(prev => [...prev, ...docs]);
-        setHasMore(data.data?.hasNextPage || false);
-      }
-    } catch { setHasMore(false); } finally {
-      setLoading(false);
-    }
-  }, [profile]);
-
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
-
-  useEffect(() => {
-    if (profile) {
-      fetchFollowing(1);
-    }
-  }, [profile, fetchFollowing]);
-
-  const loadMore = () => {
     const next = page + 1;
     setPage(next);
-    fetchFollowing(next);
-  };
+    try {
+      const res = await fetch(`/api/users/${profile._id}/following?page=${next}&limit=24`);
+      const data = await res.json();
+      if (res.ok) {
+        setUsers(prev => [...prev, ...(data.data?.docs || [])]);
+        setHasMore(data.data?.hasNextPage || false);
+      }
+    } catch {}
+  }, [profile, page]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -69,18 +88,23 @@ export default function FollowingPage() {
           <Avatar src={profile.profileImage} alt={profile.username} size="md" />
           <div>
             <h1 className="text-2xl font-bold">{profile.displayName || profile.username} is Following</h1>
-            <p className="text-sm text-muted-foreground">Following {profile.followingCount || 0} people</p>
+            <p className="text-sm text-muted-foreground">Following {(profile.followingCount || 0).toLocaleString()} people</p>
           </div>
         </div>
       )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+      ) : error ? (
+        <div className="flex flex-col items-center py-20 text-center">
+          <p className="text-lg font-semibold text-foreground mb-2">{error}</p>
+          <p className="text-sm text-muted-foreground">This list may be private or unavailable.</p>
+        </div>
       ) : users.length === 0 ? (
-        <div className="flex flex-col items-center py-20 text-center glass-card rounded-3xl">
+        <div className="flex flex-col items-center py-20 text-center bg-secondary/20 rounded-3xl">
           <Users className="w-14 h-14 text-muted-foreground opacity-40 mb-4" />
           <h2 className="text-xl font-semibold mb-1">Not following anyone yet</h2>
-          <p className="text-sm text-muted-foreground">When {profile?.displayName || profile?.username} follows people, they'll appear here.</p>
+          <p className="text-sm text-muted-foreground">When {profile?.displayName || profile?.username} follows people, they&apos;ll appear here.</p>
         </div>
       ) : (
         <InfiniteScroll

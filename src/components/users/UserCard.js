@@ -19,9 +19,9 @@ export default function UserCard({ user: profileUser }) {
           </p>
           <p className="text-xs text-muted-foreground">@{profileUser.username}</p>
         </div>
-        <p className="text-xs text-muted-foreground">
+        {/* <p className="text-xs text-muted-foreground">
           {profileUser.followersCount || 0} followers
-        </p>
+        </p> */}
       </Link>
       {!isOwner && (
         <FollowButton

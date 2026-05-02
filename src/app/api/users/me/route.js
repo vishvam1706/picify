@@ -9,8 +9,9 @@ export const PATCH = withAuth(async (request) => {
     
     // Allowed fields for update
     const allowedFields = [
-      'displayName', 'bio', 'portfolioUrl', 'profileImage', 
-      'coverImage', 'privacy', 'themePreference'
+      'displayName', 'username', 'bio', 'portfolioUrl', 'profileImage', 
+      'coverImage', 'privacy', 'notificationPreferences', 'themePreference', 'isCreator',
+      'brandCollabsEnabled', 'creatorSubscriptionsEnabled', 'subscriptionPrice', 'tipsEnabled'
     ];
     
     const updates = {};

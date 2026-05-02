@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import mongoosePaginate from 'mongoose-paginate-v2';
 
 const ActivitySchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -16,5 +17,7 @@ const ActivitySchema = new Schema({
 ActivitySchema.index({ userId: 1, createdAt: -1 });
 // TTL: expires after 90 days
 ActivitySchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
+
+ActivitySchema.plugin(mongoosePaginate);
 
 export default mongoose.models.Activity || mongoose.model('Activity', ActivitySchema);

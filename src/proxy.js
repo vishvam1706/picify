@@ -3,11 +3,9 @@ import { verifyTokenEdge } from '@/lib/edgeAuth';
 
 const COOKIE_NAME = 'picify_token';
 
-// Routes that require authentication
+// Routes that require authentication (page-level only — API auth is handled in route handlers)
 const PROTECTED_PATHS = [
   '/api/users/me',
-  '/api/pins',
-  '/api/boards',
   '/api/board-folders',
   '/api/notifications',
   '/api/analytics',
@@ -22,18 +20,16 @@ const PROTECTED_PATHS = [
 // Routes that require admin role
 const ADMIN_PATHS = ['/api/admin', '/admin'];
 
-// Public paths that should skip auth entirely
+// Public paths — always accessible to guests (auth optional)
 const PUBLIC_PATHS = [
-  '/api/auth/register',
-  '/api/auth/login',
-  '/api/auth/logout',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
-  '/api/auth/verify-email',
-  '/api/auth/google',
-  '/api/pins', // GET feed is public
+  '/api/auth/',
+  '/api/pins',          // GET feed, GET single pin
+  '/api/boards',        // GET board listing, GET single board + its pins
   '/api/search',
   '/api/users/discover',
+  '/api/users/profile', // public profile lookup
+  '/api/webhooks/',     // Stripe webhooks (unauthenticated POST from Stripe)
+  '/api/monetization/tip/confirm', // Stripe redirect after payment (no auth cookie)
 ];
 
 export async function proxy(request) {
@@ -61,6 +57,10 @@ export async function proxy(request) {
       },
     });
   }
+
+  // Short-circuit for explicitly public paths — always allow, no auth needed
+  const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p));
+  if (isPublic) return NextResponse.next();
 
   // Check if this is a protected path
   const isProtected = PROTECTED_PATHS.some(p => pathname.startsWith(p));

@@ -34,6 +34,8 @@ const PinSchema = new Schema(
     orientation: { type: String, enum: ['portrait', 'landscape', 'square'] },
     boardId: { type: Schema.Types.ObjectId, ref: 'Board' },
     collaborators: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    affiliateLink: { type: String, trim: true },
+    isSponsored: { type: Boolean, default: false },
     scheduledFor: { type: Date },
     publishedAt: { type: Date },
     likes: [{ type: Schema.Types.ObjectId, ref: 'User' }],

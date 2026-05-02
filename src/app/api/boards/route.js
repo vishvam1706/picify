@@ -59,7 +59,7 @@ export const GET = withOptionalAuth(async (request) => {
     // Default query: public boards of a user
     const query = { isDeleted: false, isPublic: true };
     
-    if (userId) query.userId = userId;
+    if (userId && userId !== 'undefined') query.userId = userId;
     if (folderId !== null && folderId !== 'undefined') query.parentFolderId = folderId;
 
     // Viewing own boards -> can see private ones

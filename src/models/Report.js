@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import mongoosePaginate from 'mongoose-paginate-v2';
 
 const ReportSchema = new Schema(
   {
@@ -25,4 +26,9 @@ const ReportSchema = new Schema(
 ReportSchema.index({ status: 1, createdAt: -1 });
 ReportSchema.index({ entityId: 1 });
 
-export default mongoose.models.Report || mongoose.model('Report', ReportSchema);
+ReportSchema.plugin(mongoosePaginate);
+
+if (mongoose.models.Report) {
+  delete mongoose.models.Report;
+}
+export default mongoose.model('Report', ReportSchema);

@@ -27,8 +27,10 @@ export const GET = withAdmin(async (request) => {
     }
 
     // Default: pins
+    const nsfw = searchParams.get('nsfw') === 'true';
     const query = { isDeleted: false };
     if (flagged) query.isFlagged = true;
+    if (nsfw) query.isNSFW = true;
     const pins = await Pin.paginate(query, {
       page, limit,
       sort: { createdAt: -1 },

@@ -1,8 +1,8 @@
 import dbConnect from '@/lib/db';
 import User from '@/models/User';
-import { withAuth, apiSuccess, apiError } from '@/lib/apiHelpers';
+import { withOptionalAuth, apiSuccess, apiError } from '@/lib/apiHelpers';
 
-export const GET = withAuth(async (request, { params }) => {
+export const GET = withOptionalAuth(async (request, { params }) => {
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page')) || 1;
@@ -14,9 +14,9 @@ export const GET = withAuth(async (request, { params }) => {
     const targetUser = await User.findById(targetUserId).select('privacy followers');
     if (!targetUser) return apiError('User not found', 404);
 
-    // Privacy check
-    if (!targetUser.privacy.showFollowers && 
-        request.user._id.toString() !== targetUserId) {
+    // Privacy check — only block if owner explicitly hid followers
+    const isOwner = request.user && request.user._id.toString() === targetUserId;
+    if (!isOwner && targetUser.privacy?.showFollowers === false) {
       return apiError('This user\'s followers are private', 403);
     }
 
@@ -32,7 +32,9 @@ export const GET = withAuth(async (request, { params }) => {
 
     // Add isFollowing flag for current user context
     const enrichedFollowers = followers.map(f => {
-      const isFollowing = request.user.following.includes(f._id);
+      const isFollowing = request.user
+        ? (request.user.following || []).some(id => id.toString() === f._id.toString())
+        : false;
       return { ...f.toObject(), isFollowing };
     });
 

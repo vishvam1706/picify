@@ -2,6 +2,7 @@ import dbConnect from '@/lib/db';
 import Pin from '@/models/Pin';
 import Board from '@/models/Board';
 import { withOptionalAuth, apiSuccess, apiError } from '@/lib/apiHelpers';
+import { getBlockedUserIds, applyBlockFilter } from '@/lib/blockFilter';
 
 export const GET = withOptionalAuth(async (request, { params }) => {
   try {
@@ -23,7 +24,7 @@ export const GET = withOptionalAuth(async (request, { params }) => {
       if (!isOwner && !isCollaborator) return apiError('Board is private', 403);
     }
 
-    const query = { boardId: board._id, isDeleted: false };
+    let query = { boardId: board._id, isDeleted: false };
     
     // Only owner/collaborators see drafts in this board
     if (!request.user || 
@@ -33,6 +34,10 @@ export const GET = withOptionalAuth(async (request, { params }) => {
       query.isDraft = false;
       query.publishedAt = { $lte: new Date() };
     }
+
+    // Filter out pins from blocked users
+    const blockedIds = await getBlockedUserIds(request.user?._id);
+    query = applyBlockFilter(query, blockedIds);
 
     const pins = await Pin.paginate(query, {
       page,

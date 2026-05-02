@@ -18,13 +18,26 @@ export const GET = withAdmin(async (request) => {
       limit,
       sort: { createdAt: -1 },
       populate: [
-        { path: 'reporterId', select: 'username displayName' },
-        { path: 'resolvedBy', select: 'username displayName' }
+        { path: 'reporterId', select: 'username displayName profileImage' },
+        { path: 'reviewedBy', select: 'username displayName' }
       ]
     });
 
+    const User = (await import('@/models/User')).default;
+    const Pin = (await import('@/models/Pin')).default;
+
+    const populatedDocs = await Promise.all(reports.docs.map(async (doc) => {
+      let entity = null;
+      if (doc.entityType === 'user') {
+        entity = await User.findById(doc.entityId, 'username displayName profileImage').lean();
+      } else if (doc.entityType === 'pin') {
+        entity = await Pin.findById(doc.entityId, 'title images').lean();
+      }
+      return { ...doc.toObject(), entity };
+    }));
+
     return apiSuccess({
-      docs: reports.docs,
+      docs: populatedDocs,
       totalDocs: reports.totalDocs,
       page: reports.page,
       totalPages: reports.totalPages,
@@ -51,8 +64,8 @@ export const PATCH = withAdmin(async (request) => {
     if (!report) return apiError('Report not found', 404);
 
     report.status = status;
-    report.adminNotes = notes;
-    report.resolvedBy = request.user._id;
+    report.reviewNotes = notes;   // schema field is 'reviewNotes'
+    report.reviewedBy = request.user._id;  // schema field is 'reviewedBy'
 
     await report.save();
 

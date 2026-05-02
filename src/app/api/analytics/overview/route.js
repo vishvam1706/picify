@@ -1,51 +1,45 @@
 import dbConnect from '@/lib/db';
-import Analytics from '@/models/Analytics';
+import Pin from '@/models/Pin';
+import Board from '@/models/Board';
 import { withAuth, apiSuccess, apiError } from '@/lib/apiHelpers';
 
 export const GET = withAuth(async (request) => {
   try {
-    const { searchParams } = new URL(request.url);
-    const range = searchParams.get('range') || '30d'; // 7d, 30d, 90d
-
     await dbConnect();
-    
-    // We only serve analytics for "creators", so verify they have the flag
-    if (!request.user.isCreator) {
-      return apiError('Analytics are only available for creator accounts', 403);
-    }
+    const userId = request.user._id;
 
-    const startDate = new Date();
-    if (range === '7d') startDate.setDate(startDate.getDate() - 7);
-    else if (range === '90d') startDate.setDate(startDate.getDate() - 90);
-    else startDate.setDate(startDate.getDate() - 30);
-
-    const matchQuery = {
-      userId: request.user._id,
-      date: { $gte: startDate }
-    };
-
-    // Aggregate totals for the top cards
-    const totals = await Analytics.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: null,
-          totalViews: { $sum: '$views' },
-          totalLikes: { $sum: '$likes' },
-          totalSaves: { $sum: '$saves' },
-          totalComments: { $sum: '$comments' }
-        }
-      }
+    const [pinsData, boardsData] = await Promise.all([
+      Pin.find({ userId, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .select('title images likesCount savesCount commentsCount views createdAt')
+        .lean(),
+      Board.countDocuments({ userId, isDeleted: false }),
     ]);
 
-    // Format timeseries for sparkline charts
-    const timeseries = await Analytics.find(matchQuery)
-      .sort({ date: 1 })
-      .select('date views likes saves comments');
+    const totalLikes = pinsData.reduce((s, p) => s + (p.likesCount || 0), 0);
+    const totalSaves = pinsData.reduce((s, p) => s + (p.savesCount || 0), 0);
+    const totalViews = pinsData.reduce((s, p) => s + (p.views || 0), 0);
+    const totalComments = pinsData.reduce((s, p) => s + (p.commentsCount || 0), 0);
+
+    // Normalize image field
+    const topPins = pinsData
+      .sort((a, b) => ((b.views || 0) + (b.likesCount || 0) * 3 + (b.savesCount || 0) * 5) -
+                      ((a.views || 0) + (a.likesCount || 0) * 3 + (a.savesCount || 0) * 5))
+      .slice(0, 10)
+      .map(p => ({
+        ...p,
+        thumbnail: p.images?.[0]?.url || null,
+      }));
 
     return apiSuccess({
-      totals: totals[0] || { totalViews: 0, totalLikes: 0, totalSaves: 0, totalComments: 0 },
-      timeseries
+      totalPins: pinsData.length,
+      totalBoards: boardsData,
+      totalViews,
+      totalLikes,
+      totalSaves,
+      totalComments,
+      topPins,
     });
   } catch (err) {
     console.error('[GET analytics overview]', err);

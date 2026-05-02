@@ -7,6 +7,7 @@ import Avatar from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Heart, MoreHorizontal, Send, Loader2, Reply, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useGuestGuard } from '@/hooks/useGuestGuard';
 
 function timeAgo(date) {
   const seconds = Math.floor((Date.now() - new Date(date)) / 1000);
@@ -19,6 +20,7 @@ function timeAgo(date) {
 function CommentItem({ comment, pinId, onDelete }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const isGuest = useGuestGuard();
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(comment.likesCount || 0);
   const [showMenu, setShowMenu] = useState(false);
@@ -26,7 +28,7 @@ function CommentItem({ comment, pinId, onDelete }) {
   const isOwner = user && (user._id === comment.userId?._id || user._id === comment.userId);
 
   const toggleLike = async () => {
-    if (!user) return;
+    if (isGuest('Sign in to like comments')) return;
     const prev = liked;
     setLiked(!prev);
     setLikeCount(c => prev ? c - 1 : c + 1);
@@ -100,6 +102,7 @@ function CommentItem({ comment, pinId, onDelete }) {
 export default function CommentThread({ pinId }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const isGuest = useGuestGuard();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -174,9 +177,13 @@ export default function CommentThread({ pinId }) {
           </div>
         </form>
       ) : (
-        <p className="text-sm text-muted-foreground text-center py-2">
-          <Link href="/login" className="font-semibold text-primary hover:underline">Log in</Link> to comment
-        </p>
+        <div
+          onClick={() => isGuest('Sign in to join the conversation')}
+          className="flex gap-3 items-center py-2 px-4 bg-secondary/40 rounded-full cursor-pointer hover:bg-secondary/60 transition-colors"
+        >
+          <span className="text-sm text-muted-foreground">Add a comment...</span>
+          <Link href="/login" className="ml-auto text-xs font-bold text-primary hover:underline">Log in →</Link>
+        </div>
       )}
 
       {/* Comments List */}

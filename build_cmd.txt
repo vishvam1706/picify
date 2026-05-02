@@ -1,0 +1,39 @@
+
+> picify@0.1.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+Found 1 warning while optimizing generated CSS:
+
+[2m│   }[22m
+[2m│ }[22m
+[2m│[22m @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+[2m┆[22m        [33m[2m^--[22m @import rules must precede all rules aside from @charset and @layer statements[39m
+[2m┆[22m
+[2m│ :root {[22m
+[2m│   --bg: #fafafa;[22m
+
+✓ Compiled successfully in 28.2s
+  Running TypeScript ...
+  Collecting page data using 3 workers ...
+(node:11372) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  Generating static pages using 3 workers (0/66) ...
+  Generating static pages using 3 workers (16/66) 
+⨯ useSearchParams() should be wrapped in a suspense boundary at page "/auth/google/callback". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at Q (C:\TV\picify\.next\server\chunks\ssr\node_modules_next_920e7746._.js:2:2111)
+    at o (C:\TV\picify\.next\server\chunks\ssr\node_modules_next_920e7746._.js:4:5284)
+    at g (C:\TV\picify\.next\server\chunks\ssr\src_app_auth_google_callback_page_fa2a2a68.js:1:169)
+    at an (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:84360)
+    at ai (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:86179)
+    at al (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:107953)
+    at as (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:105368)
+    at aa (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:84712)
+    at ai (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:86228)
+    at ai (C:\TV\picify\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:104708)
+Error occurred prerendering page "/auth/google/callback". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /auth/google/callback/page: /auth/google/callback, exiting the build.
+⨯ Next.js build worker exited with code: 1 and signal: null

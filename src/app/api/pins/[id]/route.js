@@ -10,8 +10,9 @@ export const GET = withOptionalAuth(async (request, { params }) => {
     const { id } = await params;
 
     const pin = await Pin.findOne({ _id: id, isDeleted: false })
-      .populate('userId', 'username displayName profileImage isVerified followersCount')
-      .populate('boardId', 'name slug isPublic');
+      .populate('userId', 'username displayName profileImage isVerified followersCount privacy')
+      .populate('boardId', 'name slug isPublic')
+      .populate('collaborators', 'username displayName profileImage isVerified');
 
     if (!pin) return apiError('Pin not found', 404);
 
@@ -23,6 +24,10 @@ export const GET = withOptionalAuth(async (request, { params }) => {
     if (pin.isDraft && (!request.user || request.user._id.toString() !== pin.userId._id.toString())) {
       return apiError('Pin not found', 404);
     }
+
+    // Increment views count
+    await Pin.findByIdAndUpdate(id, { $inc: { views: 1 } });
+    pin.views = (pin.views || 0) + 1;
 
     // Determine user interaction state
     let isSaved = false;
@@ -41,6 +46,14 @@ export const GET = withOptionalAuth(async (request, { params }) => {
       isFollowing = currentUser?.following?.some(
         f => f.toString() === pin.userId._id.toString()
       ) ?? false;
+
+      // Log to watch history
+      const WatchHistory = (await import('@/models/WatchHistory')).default;
+      await WatchHistory.findOneAndUpdate(
+        { userId: request.user._id, pinId: pin._id },
+        { viewedAt: new Date() },
+        { upsert: true }
+      );
     }
 
     // Clone to manipulate securely
@@ -66,7 +79,7 @@ export const PATCH = withAuth(async (request, { params }) => {
     const pin = await Pin.findOne({ _id: id, userId: request.user._id, isDeleted: false });
     if (!pin) return apiError('Pin not found or unauthorized', 404);
 
-    const allowedFields = ['title', 'description', 'sourceLink', 'boardId', 'isPublic', 'isDraft', 'tags', 'categories'];
+    const allowedFields = ['title', 'description', 'sourceLink', 'boardId', 'isPublic', 'isDraft', 'tags', 'categories', 'collaborators'];
     
     const oldBoardId = pin.boardId;
     

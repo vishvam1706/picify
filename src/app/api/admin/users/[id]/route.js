@@ -12,8 +12,8 @@ export const PATCH = withAdmin(async (request, { params }) => {
     const body = await request.json();
     const { action, reason } = body;
 
-    if (!['verify', 'ban', 'unban', 'delete', 'restore'].includes(action)) {
-      return apiError('Invalid action. Use: verify, ban, unban, delete, restore', 400);
+    if (!['verify', 'unverify', 'ban', 'unban', 'delete', 'restore', 'make_creator', 'remove_creator'].includes(action)) {
+      return apiError('Invalid action. Use: verify, unverify, ban, unban, delete, restore, make_creator, remove_creator', 400);
     }
 
     await dbConnect();
@@ -34,6 +34,10 @@ export const PATCH = withAdmin(async (request, { params }) => {
         update = { isVerified: true };
         logAction = 'VERIFY_USER';
         break;
+      case 'unverify':
+        update = { isVerified: false };
+        logAction = 'UNVERIFY_USER';
+        break;
       case 'ban':
         update = { isActive: false, banReason: reason || 'Violated community guidelines' };
         logAction = 'BAN_USER';
@@ -49,6 +53,14 @@ export const PATCH = withAdmin(async (request, { params }) => {
       case 'restore':
         update = { isDeleted: false, isActive: true };
         logAction = 'RESTORE_USER';
+        break;
+      case 'make_creator':
+        update = { isCreator: true };
+        logAction = 'MAKE_CREATOR';
+        break;
+      case 'remove_creator':
+        update = { isCreator: false };
+        logAction = 'REMOVE_CREATOR';
         break;
     }
 

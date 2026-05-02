@@ -27,9 +27,9 @@ export const GET = withOptionalAuth(async (request) => {
     }
 
     // Fetch the user's boards
-    const boardQuery = { userId: targetUser._id };
+    const boardQuery = { userId: targetUser._id, isDeleted: false };
     if (!isOwner) {
-      boardQuery.isPrivate = { $ne: true }; // Hide private boards from public viewers
+      boardQuery.isPublic = true; // Hide private boards from public viewers
     }
     const boards = await Board.find(boardQuery).lean();
 

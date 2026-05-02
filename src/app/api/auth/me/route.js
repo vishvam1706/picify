@@ -16,6 +16,8 @@ export const GET = withAuth(async (request) => {
       themePreference: user.themePreference,
       followersCount: user.followersCount,
       followingCount: user.followingCount,
+      privacy: user.privacy,
+      notificationPreferences: user.notificationPreferences,
     }
   });
 });

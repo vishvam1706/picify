@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import mongoosePaginate from 'mongoose-paginate-v2';
 
 const SavedPinSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -10,5 +11,7 @@ const SavedPinSchema = new Schema({
 SavedPinSchema.index({ userId: 1, pinId: 1 }, { unique: true });
 SavedPinSchema.index({ boardId: 1 });
 SavedPinSchema.index({ userId: 1, savedAt: -1 });
+
+SavedPinSchema.plugin(mongoosePaginate);
 
 export default mongoose.models.SavedPin || mongoose.model('SavedPin', SavedPinSchema);

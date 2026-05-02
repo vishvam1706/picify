@@ -4,6 +4,7 @@ import Activity from '@/models/Activity';
 import Board from '@/models/Board';
 import { withAuth, withOptionalAuth, parseMultiFormData, apiSuccess, apiError } from '@/lib/apiHelpers';
 import { uploadBuffer } from '@/lib/cloudinary';
+import { getBlockedUserIds, applyBlockFilter } from '@/lib/blockFilter';
 import {
   getImageMetadata,
   extractColorPalette,
@@ -18,6 +19,7 @@ import {
   generateHashtags,
   generateTitle,
   generateDescription,
+  checkNsfwFromUrl,
 } from '@/lib/gemini';
 
 export const POST = withAuth(async (request) => {
@@ -77,36 +79,31 @@ export const POST = withAuth(async (request) => {
 
     uploadedImages.push(...(await Promise.all(uploadPromises)));
 
-    // Handle AI Generation if requested
+    // Handle AI Generation on primary image
     let aiTitle = fields.title;
     let aiDescription = fields.description;
     let aiCaption = null;
     let aiHashtags = [];
 
+    const primaryImgBuffer = files[0].buffer;
+    const primaryMime = files[0].mimetype;
+    const primaryB64 = primaryImgBuffer.toString('base64');
+
     const generateAi = fields.autoGenerate === 'true';
+
     if (generateAi && process.env.GEMINI_API_KEY) {
-      try {
-        const primaryImgBuffer = files[0].buffer;
-        const mime = files[0].mimetype;
-        const b64 = primaryImgBuffer.toString('base64');
+      const aiTasks = [
+        generateCaption(primaryB64, primaryMime).catch(() => null),
+        generateHashtags(primaryB64, primaryMime).catch(() => []),
+      ];
+      if (!aiTitle) aiTasks.push(generateTitle(primaryB64, primaryMime).catch(() => fields.title || 'Untitled'));
+      if (!aiDescription) aiTasks.push(generateDescription(primaryB64, primaryMime).catch(() => ''));
 
-        const tasks = [
-          generateCaption(b64, mime).catch(() => null),
-          generateHashtags(b64, mime).catch(() => []),
-        ];
-
-        if (!aiTitle) tasks.push(generateTitle(b64, mime).catch(() => fields.title || 'Untitled'));
-        if (!aiDescription) tasks.push(generateDescription(b64, mime).catch(() => ''));
-
-        const [cap, tags, autoT, autoD] = await Promise.all(tasks);
-
-        aiCaption = cap;
-        aiHashtags = tags;
-        if (!aiTitle && autoT) aiTitle = autoT;
-        if (!aiDescription && autoD) aiDescription = autoD;
-      } catch (err) {
-        console.error('[Pin Create] AI Gen Error:', err.message);
-      }
+      const [cap, tags, autoT, autoD] = await Promise.all(aiTasks);
+      aiCaption = cap;
+      aiHashtags = tags || [];
+      if (!aiTitle && autoT) aiTitle = autoT;
+      if (!aiDescription && autoD) aiDescription = autoD;
     }
 
     if (!aiTitle) aiTitle = 'Untitled Pin';
@@ -127,38 +124,69 @@ export const POST = withAuth(async (request) => {
       aiTitle,
       aiHashtags,
       imageHash,
-      isPublic: fields.isPublic !== 'false', // default true
+      isPublic: fields.isPublic !== 'false',
       isDraft: fields.isDraft === 'true',
       orientation: uploadedImages[0].width > uploadedImages[0].height ? 'landscape' : uploadedImages[0].width < uploadedImages[0].height ? 'portrait' : 'square',
       boardId: fields.boardId || null,
       publishedAt: fields.isDraft === 'true' ? null : new Date(),
+      affiliateLink: fields.affiliateLink || null,
+      isSponsored: fields.isSponsored === 'true',
     };
 
     const newPin = await Pin.create(pinData);
 
-    // If attached to board, increment count
-    if (fields.boardId) {
-      await Board.findByIdAndUpdate(fields.boardId, { $inc: { pinsCount: 1 } });
-    }
+    // Board count + Activity feed (only for clean, non-NSFW pins)
+    const boardUpdate = fields.boardId
+      ? Board.findByIdAndUpdate(fields.boardId, { $inc: { pinsCount: 1 } })
+      : Promise.resolve();
 
-    // Activity feed
-    if (!newPin.isDraft && newPin.isPublic) {
-      await Activity.create({
-        userId: request.user._id,
-        type: 'pin_created',
-        entityId: newPin._id,
-        entityType: 'pin'
-      });
-    }
+    const activityCreate = (!newPin.isDraft && newPin.isPublic)
+      ? Activity.create({ userId: request.user._id, type: 'pin_created', entityId: newPin._id, entityType: 'pin' })
+      : Promise.resolve();
 
-    // Background jobs
-    // 1. Image Optimization worker
+    await Promise.all([boardUpdate, activityCreate]);
+
+    // Background image optimisation
     uploadedImages.forEach((img, idx) => {
       enqueueImageOptimization(newPin._id.toString(), idx, img.publicId);
     });
 
-    // 2. NSFW Detection worker (on primary image)
-    enqueueNsfwDetection(newPin._id.toString(), uploadedImages[0].url);
+    // ── Post-publish NSFW check ──────────────────────────────────────────
+    // Uses the Cloudinary URL of the uploaded image — no raw buffer needed.
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const cloudinaryUrl = uploadedImages[0].url;
+        console.log(`[NSFW check] starting for pin ${newPin._id} with URL: ${cloudinaryUrl}`);
+        
+        const { isNSFW, nsfwScore } = await checkNsfwFromUrl(cloudinaryUrl);
+        console.log(`[NSFW check] complete for pin ${newPin._id}: isNSFW=${isNSFW}, score=${nsfwScore}`);
+
+        if (isNSFW) {
+          // 1. Hard-delete the pin
+          await Pin.findByIdAndDelete(newPin._id);
+
+          // 2. Send a system notification warning the user
+          const Notification = (await import('@/models/Notification')).default;
+          await Notification.create({
+            userId: request.user._id,
+            type: 'system',
+            message: `⚠️ Your pin “${newPin.title}” was automatically removed. Our AI detected potentially NSFW content (${Math.round(nsfwScore * 100)}% confidence). Repeated violations may result in account restrictions.`,
+          });
+
+          console.warn(`[NSFW] Pin ${newPin._id} removed — score=${nsfwScore}`);
+
+          return apiError(
+            `Your pin was removed after our AI detected NSFW content (${Math.round(nsfwScore * 100)}% confidence). You have been notified.`,
+            422
+          );
+        }
+      } catch (nsfwErr) {
+        // NSFW check failed — do NOT block publishing. Pin stays live.
+        console.error('[NSFW post-check] error (non-blocking):', nsfwErr);
+      }
+    } else {
+      console.log('[NSFW check] skipped: GEMINI_API_KEY is missing');
+    }
 
     return apiSuccess(newPin, 201);
   } catch (err) {
@@ -181,17 +209,18 @@ export const GET = withOptionalAuth(async (request) => {
 
     await dbConnect();
 
-    // Default: Only public, non-deleted, published pins
-    const query = {
+    // Default: Only public, non-deleted, published, safe-for-work pins
+    let query = {
       isPublic: true,
       isDeleted: false,
       isDraft: false,
+      isNSFW: { $ne: true }, // hide NSFW from default feed
       publishedAt: { $lte: new Date() }
     };
 
     // Apply specific filters
-    if (userId) query.userId = userId;
-    if (boardId) query.boardId = boardId;
+    if (userId && userId !== 'undefined') query.userId = userId;
+    if (boardId && boardId !== 'undefined') query.boardId = boardId;
     if (tag) query.tags = tag.toLowerCase();
     if (category) query.categories = category;
 
@@ -202,6 +231,12 @@ export const GET = withOptionalAuth(async (request) => {
       delete query.publishedAt; // user sees their own future scheduled pins too
     }
 
+    // Filter out pins from blocked users (only for authenticated users viewing a feed, not their own profile)
+    if (request.user && userId !== request.user._id.toString()) {
+      const blockedIds = await getBlockedUserIds(request.user._id);
+      query = applyBlockFilter(query, blockedIds);
+    }
+
     const pins = await Pin.paginate(query, {
       page,
       limit,
@@ -210,8 +245,33 @@ export const GET = withOptionalAuth(async (request) => {
       lean: true
     });
 
+    let results = pins.docs;
+
+    if (request.user) {
+      const SavedPin = (await import('@/models/SavedPin')).default;
+      const savedPinIds = await SavedPin.find({ userId: request.user._id, pinId: { $in: results.map(r => r._id) } }).distinct('pinId');
+      const savedSet = new Set(savedPinIds.map(id => id.toString()));
+      const userIdStr = request.user._id.toString();
+
+      results = results.map(p => {
+        const isSaved = savedSet.has(p._id.toString());
+        const isLiked = p.likes && p.likes.some(id => id.toString() === userIdStr);
+        const obj = { ...p, isSaved, isLiked };
+        delete obj.likes;
+        delete obj.saves;
+        return obj;
+      });
+    } else {
+      results = results.map(p => {
+        const obj = { ...p };
+        delete obj.likes;
+        delete obj.saves;
+        return obj;
+      });
+    }
+
     return apiSuccess({
-      docs: pins.docs,
+      docs: results,
       totalDocs: pins.totalDocs,
       page: pins.page,
       totalPages: pins.totalPages,

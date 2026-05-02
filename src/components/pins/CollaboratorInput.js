@@ -29,11 +29,11 @@ export default function CollaboratorInput({ collaborators = [], setCollaborators
       }
       setLoading(true);
       try {
-        const res = await fetch(`/api/search/users?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/search?type=users&q=${encodeURIComponent(query)}&limit=8`);
         const data = await res.json();
         if (res.ok) {
           // Filter out the current user and already added collaborators
-          const filtered = data.data.filter(u => 
+          const filtered = (data.data?.docs || []).filter(u => 
             u._id !== user._id && !collaborators.some(c => c._id === u._id)
           );
           setResults(filtered);
