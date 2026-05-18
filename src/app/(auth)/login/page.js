@@ -7,11 +7,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
+  const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
@@ -20,28 +22,23 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrors({});
-    
+    setFormError('');
+
     // Client-side validation
     const newErrors = {};
     if (!email) newErrors.email = 'Email address is required';
     else if (!/^\S+@\S+\.\S+$/.test(email)) newErrors.email = 'Please enter a valid email address';
-    
     if (!password) newErrors.password = 'Password is required';
-    
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
+
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
 
     setLoading(true);
-
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-
       const data = await res.json();
 
       if (res.ok) {
@@ -49,14 +46,24 @@ export default function LoginPage() {
           router.push(`/2fa?token=${data.data.tempToken}`);
         } else {
           login(data.data.user);
-          toast({ title: 'Welcome back!', variant: 'default' });
+          toast({ title: 'Welcome back!' });
           router.push('/');
         }
       } else {
-        toast({ title: 'Login failed', description: data.error, variant: 'destructive' });
+        const msg = data.error || 'Login failed';
+        // Map common errors to inline field errors
+        if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('credentials')) {
+          setErrors({ password: 'Incorrect email or password. Please try again.' });
+        } else if (msg.toLowerCase().includes('email') || msg.toLowerCase().includes('not found')) {
+          setErrors({ email: 'No account found with this email address.' });
+        } else if (msg.toLowerCase().includes('ban')) {
+          setFormError('Your account has been suspended. Please contact support.');
+        } else {
+          setFormError(msg);
+        }
       }
-    } catch (err) {
-      toast({ title: 'Error', description: 'Internal server error', variant: 'destructive' });
+    } catch {
+      setFormError('Something went wrong. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -74,30 +81,43 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Form-level error (ban, unknown errors) */}
+          {formError && (
+            <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl px-4 py-3 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
+
           <div>
-            <Input 
-              type="email" 
-              placeholder="Email address" 
+            <Input
+              type="email"
+              placeholder="Email address"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setErrors(prev => ({...prev, email: ''})); }}
+              onChange={(e) => { setEmail(e.target.value); setErrors(p => ({ ...p, email: '' })); setFormError(''); }}
               autoComplete="email"
               className={`h-12 rounded-xl ${errors.email ? 'border-destructive focus-visible:ring-destructive/20' : ''}`}
             />
-            {errors.email && <p className="text-sm text-destructive mt-1.5 ml-1">{errors.email}</p>}
+            {errors.email && <p className="text-sm text-destructive mt-1.5 ml-1 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" />{errors.email}</p>}
           </div>
 
           <div>
-            <Input 
-              type="password" 
-              placeholder="Password" 
+            <Input
+              type="password"
+              placeholder="Password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setErrors(prev => ({...prev, password: ''})); }}
+              onChange={(e) => { setPassword(e.target.value); setErrors(p => ({ ...p, password: '' })); setFormError(''); }}
               autoComplete="current-password"
               className={`h-12 rounded-xl ${errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''}`}
             />
-            {errors.password && <p className="text-sm text-destructive mt-1.5 ml-1">{errors.password}</p>}
+            {errors.password && <p className="text-sm text-destructive mt-1.5 ml-1 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" />{errors.password}</p>}
+            <div className="flex justify-end mt-1.5">
+              <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Forgot password?
+              </Link>
+            </div>
           </div>
-          
+
           <Button type="submit" disabled={loading} className="w-full h-12 rounded-full text-lg mt-2 font-semibold">
             {loading ? 'Logging in...' : 'Log in'}
           </Button>

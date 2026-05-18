@@ -30,7 +30,7 @@ const TABS = [
   { id: 'analytics', label: 'Platform Analytics', icon: BarChart3 },
   { id: 'categories', label: 'Categories & Tags', icon: Tag },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
-  { id: 'flags', label: 'Feature Flags', icon: Zap },
+  // { id: 'flags', label: 'Feature Flags', icon: Zap },
   { id: 'system', label: 'System Settings', icon: Settings },
   { id: 'health', label: 'Server Health', icon: Server },
   { id: 'logs', label: 'Audit Logs', icon: ScrollText },
@@ -90,9 +90,9 @@ function UsersTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
-      if (res.ok) { 
-        toast({ title: `User ${action} successful` }); 
-        
+      if (res.ok) {
+        toast({ title: `User ${action} successful` });
+
         // Optimistic UI update
         setUsers(current => current.map(u => {
           if (u._id === id) {
@@ -160,11 +160,11 @@ function UsersTab() {
                   <div className="flex items-center justify-end gap-2 flex-wrap">
                     {!u.isVerified
                       ? <Button variant="secondary" size="sm" onClick={() => handleAction(u._id, 'verify')} title="Grant verified badge">
-                          <BadgeCheck className="w-3.5 h-3.5 mr-1 text-blue-500" />Verify
-                        </Button>
+                        <BadgeCheck className="w-3.5 h-3.5 mr-1 text-blue-500" />Verify
+                      </Button>
                       : <Button variant="secondary" size="sm" onClick={() => handleAction(u._id, 'unverify')} title="Remove verified badge" className="border border-blue-500/30 text-blue-500 hover:bg-blue-500/10">
-                          <BadgeX className="w-3.5 h-3.5 mr-1" />Unverify
-                        </Button>
+                        <BadgeX className="w-3.5 h-3.5 mr-1" />Unverify
+                      </Button>
                     }
                     {u.isActive
                       ? <Button variant="destructive" size="sm" onClick={() => handleAction(u._id, 'ban')}><Ban className="w-3.5 h-3.5 mr-1" />Ban</Button>
@@ -246,9 +246,9 @@ function ReportsTab() {
                   <td className="px-5 py-4 font-medium">{r.reporterId?.username || 'Anonymous'}</td>
                   <td className="px-5 py-4">
                     {r.entity ? (
-                      <a 
-                        href={r.entityType === 'user' ? `/${r.entity.username}` : `/pin/${r.entity._id}`} 
-                        target="_blank" 
+                      <a
+                        href={r.entityType === 'user' ? `/${r.entity.username}` : `/pin/${r.entity._id}`}
+                        target="_blank"
                         rel="noreferrer"
                         className="text-primary hover:underline flex items-center gap-1 max-w-[150px] truncate"
                       >
@@ -360,41 +360,37 @@ function SystemTab() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/admin/system').then(r => r.json()).then(d => { if (d.success) setSettings(d.data); });
+    fetch('/api/admin/system-settings').then(r => r.json()).then(d => { if (d.success) setSettings(d.data); });
   }, []);
 
-  // Auto-save a single key-value pair immediately
-  const saveSingle = async (key, value) => {
+  // Immediately save a nested platform/upload/trending toggle
+  const saveSingle = async (section, subKey, newVal) => {
     try {
-      const res = await fetch('/api/admin/system', {
+      await fetch('/api/admin/system-settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: value })
+        body: JSON.stringify({ [section]: { [subKey]: newVal } })
       });
-      if (!res.ok) toast({ title: 'Failed to save', variant: 'destructive' });
     } catch {
       toast({ title: 'Network error', variant: 'destructive' });
     }
   };
 
-  const handleToggle = (path, subKey, apiKey) => (v) => {
-    setSettings(s => ({ ...s, [path]: { ...s[path], [subKey]: v } }));
-    saveSingle(apiKey, v);
+  const handleToggle = (section, subKey) => (v) => {
+    setSettings(s => ({ ...s, [section]: { ...s[section], [subKey]: v } }));
+    saveSingle(section, subKey, v);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/system', {
+      const res = await fetch('/api/admin/system-settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          maintenanceMode: settings.platform?.maintenanceMode,
-          allowRegistrations: settings.platform?.registrationOpen,
-          maxUploadSizeMB: settings.upload?.maxFileSize,
-          weightViews: settings.trending?.weightViews,
-          weightLikes: settings.trending?.weightLikes,
-          weightSaves: settings.trending?.weightSaves,
+          platform: settings.platform,
+          upload: settings.upload,
+          trending: settings.trending,
         })
       });
       if (res.ok) toast({ title: 'Settings saved!' });
@@ -422,12 +418,12 @@ function SystemTab() {
         <SettingToggle
           label="Maintenance Mode" desc="Takes site offline for all non-admin users"
           value={settings.platform?.maintenanceMode || false}
-          onChange={handleToggle('platform', 'maintenanceMode', 'maintenanceMode')}
+          onChange={handleToggle('platform', 'maintenanceMode')}
         />
         <SettingToggle
           label="Open Registrations" desc="Allow new users to sign up"
           value={settings.platform?.registrationOpen ?? true}
-          onChange={handleToggle('platform', 'registrationOpen', 'allowRegistrations')}
+          onChange={handleToggle('platform', 'registrationOpen')}
         />
       </div>
 
@@ -516,9 +512,9 @@ function LogsTab() {
 
   const filteredLogs = search.trim()
     ? logs.filter(l =>
-        (l.adminId?.username || '').toLowerCase().includes(search.toLowerCase()) ||
-        (l.action || '').toLowerCase().includes(search.toLowerCase())
-      )
+      (l.adminId?.username || '').toLowerCase().includes(search.toLowerCase()) ||
+      (l.action || '').toLowerCase().includes(search.toLowerCase())
+    )
     : logs;
 
   const ACTION_FILTERS = [
@@ -797,11 +793,10 @@ export default function AdminDashboard() {
     const isActive = activeTab === tab.id;
     return (
       <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-        className={`group relative flex items-center gap-3 px-3 py-2.5 w-full rounded-xl text-sm font-semibold transition-all duration-200 ${
-          isActive 
-            ? 'bg-primary text-white shadow-md shadow-primary/20' 
-            : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-        }`}>
+        className={`group relative flex items-center gap-3 px-3 py-2.5 w-full rounded-xl text-sm font-semibold transition-all duration-200 ${isActive
+          ? 'bg-primary text-white shadow-md shadow-primary/20'
+          : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+          }`}>
         <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-muted-foreground group-hover:text-foreground transition-colors'}`} />
         {tab.label}
         {isActive && <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
@@ -824,7 +819,7 @@ export default function AdminDashboard() {
               <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-1">Production Panel</p>
             </div>
           </div>
-          
+
           <nav className="flex flex-col gap-6 flex-1">
             {/* Overview Group */}
             <div className="flex flex-col gap-1">
@@ -851,15 +846,15 @@ export default function AdminDashboard() {
             </div>
           </nav>
         </div>
-        
+
         {/* User Profile & Exit */}
         <div className="p-4 m-4 rounded-2xl bg-secondary/50 border border-border/50 backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-4">
-             <Avatar src={user.profileImage} alt={user.username} size="sm" />
-             <div className="flex-1 min-w-0">
-               <p className="text-sm font-bold truncate text-foreground">{user.displayName || user.username}</p>
-               <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Super Admin</p>
-             </div>
+            <Avatar src={user.profileImage} alt={user.username} size="sm" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate text-foreground">{user.displayName || user.username}</p>
+              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Super Admin</p>
+            </div>
           </div>
           <Link href="/" className="flex items-center justify-center gap-2 text-sm font-semibold bg-background hover:bg-accent border border-border transition-colors w-full py-2.5 rounded-xl text-foreground shadow-sm group">
             <Globe className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" /> Exit to Site

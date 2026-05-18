@@ -6,6 +6,7 @@ import Navbar from '@/components/layout/Navbar';
 import Sidebar from '@/components/layout/Sidebar';
 import Toaster from '@/components/ui/Toaster';
 import LayoutShell from '@/components/layout/LayoutShell';
+import AnnouncementBanner from '@/components/layout/AnnouncementBanner';
 import './globals.css';
 
 const inter = Inter({
@@ -33,6 +34,7 @@ export default function RootLayout({ children }) {
               <Sidebar />
               {/* Main content — offset dynamically with sidebar state */}
               <LayoutShell>
+                <AnnouncementBanner />
                 {children}
               </LayoutShell>
               <Toaster />

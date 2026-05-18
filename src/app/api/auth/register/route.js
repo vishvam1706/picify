@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import dbConnect from '@/lib/db';
 import User from '@/models/User';
+import SystemSettings from '@/models/SystemSettings';
 import { hashPassword, signToken } from '@/lib/auth';
 import { apiSuccess, apiError } from '@/lib/apiHelpers';
 import { sendEmail } from '@/lib/email';
@@ -9,6 +10,13 @@ import { sendEmail } from '@/lib/email';
 export async function POST(request) {
   try {
     await dbConnect();
+
+    // ── Registration gate ────────────────────────────────────────────────
+    const settings = await SystemSettings.findOne().lean();
+    if (settings?.platform?.registrationOpen === false) {
+      return apiError('Registrations are currently closed. Please check back later.', 403);
+    }
+
     const body = await request.json();
     const { email, password, username, displayName } = body;
 
